@@ -1,6 +1,9 @@
 import os
 from typing import Optional
 from google.cloud import aiplatform
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class Config:

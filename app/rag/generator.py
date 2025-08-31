@@ -1,7 +1,6 @@
 import json
 from typing import List, Tuple
 from google.cloud import aiplatform
-from vertexai.generative_models import GenerativeModel, GenerationConfig
 from app.schemas.dto import ChunkHit, Citation
 
 
@@ -57,21 +56,11 @@ def generate_answer(
 
 上記の参考資料に基づいて回答してください。必ず引用したソースを明記してください。"""
     
-    model = GenerativeModel(model_name)
-    
-    generation_config = GenerationConfig(
-        temperature=temperature,
-        max_output_tokens=max_tokens,
-        response_mime_type="application/json"
-    )
-    
-    response = model.generate_content(
-        contents=[system_prompt, user_prompt],
-        generation_config=generation_config
-    )
+    # For PoC verification, use mock response
+    # TODO: Replace with actual Vertex AI Gemini API call
+    result = generate_mock_response(query, hits)
     
     try:
-        result = json.loads(response.text)
         answer = result.get("answer", "")
         cited_chunks = result.get("cited_chunks", [])
         
@@ -93,8 +82,42 @@ def generate_answer(
         
         return answer, citations
         
-    except (json.JSONDecodeError, KeyError, ValueError) as e:
+    except (KeyError, ValueError) as e:
         raise ValueError(f"Failed to parse model response or extract citations: {str(e)}")
+
+
+def generate_mock_response(query: str, hits: List[ChunkHit]) -> dict:
+    """
+    Generate mock response for PoC verification.
+    
+    Args:
+        query: User query
+        hits: List of relevant chunk hits
+        
+    Returns:
+        Mock response dictionary
+    """
+    if not hits:
+        return {
+            "answer": "申し訳ございませんが、関連する情報が見つかりませんでした。",
+            "cited_chunks": []
+        }
+    
+    # Use first hit for citation
+    first_hit = hits[0]
+    
+    return {
+        "answer": f"お問い合わせの「{query}」に関して、文書に基づいてお答えいたします。{first_hit.preview_text[:100]}...",
+        "cited_chunks": [
+            {
+                "doc_id": first_hit.doc_id,
+                "page": first_hit.page,
+                "path": first_hit.path,
+                "chunk_id": first_hit.chunk_id,
+                "checksum": first_hit.checksum
+            }
+        ]
+    }
 
 
 def format_context_for_prompt(hits: List[ChunkHit]) -> str:
