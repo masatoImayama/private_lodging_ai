@@ -60,30 +60,26 @@ def generate_answer(
     # TODO: Replace with actual Vertex AI Gemini API call
     result = generate_mock_response(query, hits)
     
-    try:
-        answer = result.get("answer", "")
-        cited_chunks = result.get("cited_chunks", [])
-        
-        if not answer:
-            raise ValueError("No answer generated")
-        
-        if not cited_chunks:
-            raise ValueError("No citations provided in the generated answer")
-        
-        citations = []
-        for cited_chunk in cited_chunks:
-            citations.append(Citation(
-                doc_id=cited_chunk["doc_id"],
-                page=cited_chunk["page"],
-                path=cited_chunk["path"],
-                chunk_id=cited_chunk["chunk_id"],
-                checksum=cited_chunk["checksum"]
-            ))
-        
-        return answer, citations
-        
-    except (KeyError, ValueError) as e:
-        raise ValueError(f"Failed to parse model response or extract citations: {str(e)}")
+    answer = result.get("answer", "")
+    cited_chunks = result.get("cited_chunks", [])
+    
+    if not answer:
+        raise ValueError("No answer generated")
+    
+    if not cited_chunks:
+        raise ValueError("No citations provided in the generated answer")
+    
+    citations = []
+    for cited_chunk in cited_chunks:
+        citations.append(Citation(
+            doc_id=cited_chunk["doc_id"],
+            page=cited_chunk["page"],
+            path=cited_chunk["path"],
+            chunk_id=cited_chunk["chunk_id"],
+            checksum=cited_chunk["checksum"]
+        ))
+    
+    return answer, citations
 
 
 def generate_mock_response(query: str, hits: List[ChunkHit]) -> dict:

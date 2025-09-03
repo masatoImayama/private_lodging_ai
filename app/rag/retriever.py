@@ -15,12 +15,9 @@ def embed_query(query: str, model_name: str = "text-embedding-004") -> List[floa
     Returns:
         Embedding vector
     """
-    from vertexai.language_models import TextEmbeddingModel
-    
-    model = TextEmbeddingModel.from_pretrained(model_name)
-    embeddings = model.get_embeddings([query])
-    
-    return embeddings[0].values
+    from app.rag.indexer import embed_texts
+    embeddings = embed_texts([query])
+    return embeddings[0]
 
 
 def vector_search(
@@ -160,30 +157,41 @@ async def search(
     Returns:
         List of ChunkHit objects
     """
+    import os
+    
     query_embedding = embed_query(query)
     
-    search_results = vector_search(
-        tenant_id=tenant_id,
-        query_embedding=query_embedding,
-        index_endpoint_id=index_endpoint_id,
-        top_k=top_k_vector
-    )
-    
-    hits = []
-    for datapoint_id, distance, metadata in search_results:
-        score = 1.0 / (1.0 + distance)
-        
-        hit = ChunkHit(
-            chunk_id=metadata.get("chunk_id", ""),
-            doc_id=metadata.get("doc_id", ""),
-            page=int(metadata.get("page", 1)),
-            path=metadata.get("path", ""),
-            checksum=metadata.get("checksum", ""),
-            preview_text=metadata.get("preview_text", ""),
-            score=score,
-            full_text=metadata.get("full_text", "")
+    # Use mock store for testing if MOCK_MODE is set
+    if os.getenv("MOCK_MODE", "true").lower() == "true":
+        from app.rag.mock_store import mock_store
+        hits = mock_store.search(
+            tenant_id=tenant_id,
+            query_embedding=query_embedding,
+            top_k=top_k_vector
         )
-        hits.append(hit)
+    else:
+        search_results = vector_search(
+            tenant_id=tenant_id,
+            query_embedding=query_embedding,
+            index_endpoint_id=index_endpoint_id,
+            top_k=top_k_vector
+        )
+        
+        hits = []
+        for datapoint_id, distance, metadata in search_results:
+            score = 1.0 / (1.0 + distance)
+            
+            hit = ChunkHit(
+                chunk_id=metadata.get("chunk_id", ""),
+                doc_id=metadata.get("doc_id", ""),
+                page=int(metadata.get("page", 1)),
+                path=metadata.get("path", ""),
+                checksum=metadata.get("checksum", ""),
+                preview_text=metadata.get("preview_text", ""),
+                score=score,
+                full_text=metadata.get("full_text", "")
+            )
+            hits.append(hit)
     
     diversified_hits = apply_mmr(
         hits=hits,

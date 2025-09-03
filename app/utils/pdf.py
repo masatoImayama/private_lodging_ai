@@ -39,21 +39,26 @@ def extract_text_from_pdf(gcs_uri: str) -> List[PageText]:
     pages = []
     
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        tmp_path = tmp_file.name
+    
+    try:
+        blob.download_to_filename(tmp_path)
+        
+        reader = PdfReader(tmp_path)
+        
+        for page_num, page in enumerate(reader.pages, start=1):
+            text = page.extract_text()
+            if text:
+                pages.append(PageText(
+                    page_num=page_num,
+                    text=text.strip()
+                ))
+    finally:
         try:
-            blob.download_to_filename(tmp_file.name)
-            
-            reader = PdfReader(tmp_file.name)
-            
-            for page_num, page in enumerate(reader.pages, start=1):
-                text = page.extract_text()
-                if text:
-                    pages.append(PageText(
-                        page_num=page_num,
-                        text=text.strip()
-                    ))
-        finally:
-            if os.path.exists(tmp_file.name):
-                os.unlink(tmp_file.name)
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except:
+            pass
     
     if not pages:
         raise ValueError(f"No text could be extracted from PDF: {gcs_uri}")

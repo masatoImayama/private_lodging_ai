@@ -43,7 +43,18 @@ INDEX_ENDPOINT_ID=your-index-endpoint-id
 
 ### ローカル開発
 
+#### 仮想環境を使用する場合（推奨）
+
 ```bash
+# 仮想環境の作成
+python -m venv venv
+
+# 仮想環境の有効化
+# Windows
+.\venv\Scripts\activate
+# macOS/Linux
+source venv/bin/activate
+
 # 依存関係のインストール
 pip install -r requirements.txt
 
@@ -53,7 +64,11 @@ cp .env.example .env
 
 # アプリケーションの起動
 uvicorn app.api.main:app --reload --port 8080
+
+# 仮想環境の無効化（使用終了時）
+deactivate
 ```
+
 
 ### Docker
 
@@ -69,15 +84,15 @@ docker run -p 8080:8080 --env-file .env private-lodging-rag
 
 ```bash
 # Cloud Build でイメージをビルド
-gcloud builds submit --tag gcr.io/PROJECT_ID/private-lodging-rag
+gcloud builds submit --tag gcr.io/private-lodging-ai/private-lodging-rag
 
 # Cloud Run にデプロイ
 gcloud run deploy private-lodging-rag \
-  --image gcr.io/PROJECT_ID/private-lodging-rag \
+  --image gcr.io/private-lodging-ai/private-lodging-rag \
   --platform managed \
   --region asia-northeast1 \
   --allow-unauthenticated \
-  --set-env-vars PROJECT_ID=your-project-id,LOCATION=asia-northeast1,BUCKET_NAME=your-bucket,INDEX_ID=your-index-id,INDEX_ENDPOINT_ID=your-endpoint-id
+  --set-env-vars PROJECT_ID=private-lodging-ai,LOCATION=asia-northeast1,BUCKET_NAME=private-lodging-ai-rag-poc,INDEX_ID=2746124848370548736,INDEX_ENDPOINT_ID=rag_poc_index_ep_1756566513390
 ```
 
 ## API使用例
