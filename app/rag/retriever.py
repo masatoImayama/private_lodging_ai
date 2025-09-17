@@ -7,14 +7,23 @@ from app.schemas.dto import ChunkHit
 def embed_query(query: str, model_name: str = "text-embedding-004") -> List[float]:
     """
     Generate embedding for a query using Vertex AI.
-    
+
     Args:
         query: Query text to embed
         model_name: Name of the embedding model
-        
+
     Returns:
         Embedding vector
     """
+    import os
+
+    # Simple mock embedding for testing
+    if os.getenv("MOCK_MODE", "true").lower() == "true":
+        # Create a simple query-based embedding
+        # Use character codes to create variations
+        base_value = sum(ord(c) for c in query.lower()[:10]) / 1000.0
+        return [base_value + (i * 0.001) for i in range(768)]
+
     from app.rag.indexer import embed_texts
     embeddings = embed_texts([query])
     return embeddings[0]

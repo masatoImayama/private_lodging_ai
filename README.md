@@ -87,12 +87,8 @@ docker run -p 8080:8080 --env-file .env private-lodging-rag
 gcloud builds submit --tag gcr.io/private-lodging-ai/private-lodging-rag
 
 # Cloud Run にデプロイ
-gcloud run deploy private-lodging-rag \
-  --image gcr.io/private-lodging-ai/private-lodging-rag \
-  --platform managed \
-  --region asia-northeast1 \
-  --allow-unauthenticated \
-  --set-env-vars PROJECT_ID=private-lodging-ai,LOCATION=asia-northeast1,BUCKET_NAME=private-lodging-ai-rag-poc,INDEX_ID=2746124848370548736,INDEX_ENDPOINT_ID=rag_poc_index_ep_1756566513390
+gcloud run deploy private-lodging-rag --image gcr.io/private-lodging-ai/pr
+ivate-lodging-rag --platform managed --region us-central1 --allow-unauthenticated --set-env-vars PROJECT_ID=private-lodging-ai,LOCATION=us-central1,BUCKET_NAME=private-lodging-ai-rag-poc,INDEX_ID=6836589578673979392,INDEX_ENDPOINT_ID=7867526865248845824
 ```
 
 ## API使用例
@@ -100,12 +96,12 @@ gcloud run deploy private-lodging-rag \
 ### ドキュメント取り込み
 
 ```bash
-curl -X POST "http://localhost:8080/ingest" \
+curl -X POST "https://private-lodging-rag-nlfnberfpq-uc.a.run.app/ingest" \
   -H "Content-Type: application/json" \
   -d '{
-    "tenant_id": "t_001",
-    "gcs_uri": "gs://your-bucket/documents/sample.pdf",
-    "doc_id": "doc-2025-001"
+    "tenant_id": "t_003",
+    "gcs_uri": "gs://private-lodging-ai-prod-data/sample.txt",
+    "doc_id": "doc-2025-003"
   }'
 ```
 

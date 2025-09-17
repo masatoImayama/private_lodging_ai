@@ -82,38 +82,43 @@ def upsert_vectors(
     
     from google.cloud import aiplatform_v1
     from app.config import Config
-    
+
     aiplatform.init(project=Config.PROJECT_ID, location=Config.LOCATION)
-    index_endpoint = aiplatform.MatchingEngineIndexEndpoint(index_endpoint_id)
-    
-    # Use the deployed index to upsert vectors
-    deployed_index_id = index_endpoint.deployed_indexes[0].id
-    
+
+    # For PoC, use batch update to the index instead of real-time upsert
+    # This is more appropriate for Vector Search architecture
+
+    # Create data points for batch update
     data_points = []
     for chunk, embedding in zip(chunks, embeddings):
-        data_point = aiplatform_v1.IndexDatapoint(
-            datapoint_id=f"{tenant_id}_{doc_id}_{chunk.chunk_id}",
-            feature_vector=embedding,
-            restricts=[
-                aiplatform_v1.IndexDatapoint.Restriction(
-                    namespace=tenant_id,
-                    allow_list=[tenant_id]
-                )
-            ]
-        )
+        # Create metadata for the datapoint
+        metadata = {
+            "tenant_id": tenant_id,
+            "doc_id": doc_id,
+            "chunk_id": chunk.chunk_id,
+            "page": str(chunk.page),
+            "path": gcs_uri,
+            "checksum": chunk.checksum,
+            "preview_text": chunk.preview_text,
+            "full_text": chunk.text
+        }
+
+        data_point = {
+            "datapoint_id": f"{tenant_id}_{doc_id}_{chunk.chunk_id}",
+            "feature_vector": embedding,
+            "restricts": [{"namespace": tenant_id, "allow_list": [tenant_id]}],
+            "metadata": metadata
+        }
         data_points.append(data_point)
-    
-    # Use match method to upsert data points
-    index_endpoint.match(
-        deployed_index_id=deployed_index_id,
-        queries=[chunk.text for chunk in chunks[:1]],  # dummy query for upsert
-        num_neighbors=1
-    )
-    
-    # Note: For actual upsert, we need to use the Vector Search API directly
-    # This is a simplified implementation for PoC
-    print(f"Would upsert {len(data_points)} vectors to index endpoint {index_endpoint_id}")
-    
+
+    # For PoC: Log the data points that would be upserted
+    # In production, these would be uploaded to GCS and used for batch index update
+    print(f"Generated {len(data_points)} data points for batch update to Vector Search")
+    for i, dp in enumerate(data_points[:3]):  # Log first 3 for verification
+        print(f"Data point {i+1}: ID={dp['datapoint_id']}, tenant={dp['metadata']['tenant_id']}")
+
+    # TODO: Implement actual batch update using GCS staging and index update
+    # For PoC, return success count
     return len(data_points)
 
 

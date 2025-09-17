@@ -79,5 +79,53 @@ class MockVectorStore:
         self.vectors.clear()
 
 
-# Global mock store instance
+# Global mock store instance with persistence simulation
 mock_store = MockVectorStore()
+
+# For demo purposes, pre-populate with sample data
+def initialize_demo_data():
+    """Initialize mock store with sample data for demo."""
+    if not mock_store.vectors:  # Only initialize if empty
+        sample_embedding = [0.1] * 768  # Simple embedding
+        mock_store.upsert(
+            tenant_id="t_003",
+            doc_id="doc-2025-003",
+            chunk_id="c-00001",
+            embedding=sample_embedding,
+            metadata={
+                "page": 1,
+                "path": "gs://private-lodging-ai-prod-data/sample.txt",
+                "checksum": "sha256:sample123",
+                "preview_text": "基本情報 物件名：YOOSUU上野/YOOSUU UENO",
+                "full_text": "基本情報\n物件名：YOOSUU上野/YOOSUU UENO\n物件説明：当物件は東京都のJR御徒町駅に位置します。繁華街の中の住宅街で、静かでプライバシーが保たれています。羽田・成田空港へ直通、上野・秋葉原などの有名観光地へも1駅でアクセス可能で交通至便です。"
+            }
+        )
+        mock_store.upsert(
+            tenant_id="t_003",
+            doc_id="doc-2025-003",
+            chunk_id="c-00002",
+            embedding=[0.2] * 768,
+            metadata={
+                "page": 1,
+                "path": "gs://private-lodging-ai-prod-data/sample.txt",
+                "checksum": "sha256:sample456",
+                "preview_text": "所在地 郵便番号：110-0016",
+                "full_text": "所在地\n郵便番号：110-0016\n日本語住所：東京都台東区台東３丁目１１ー１０　ルネサンスコート御徒町\n英語住所：Renaissance Court Okachimachi, 3 Chome-11-10 Taito, Taito City, Tokyo"
+            }
+        )
+        mock_store.upsert(
+            tenant_id="t_003",
+            doc_id="doc-2025-003",
+            chunk_id="c-00003",
+            embedding=[0.3] * 768,
+            metadata={
+                "page": 1,
+                "path": "gs://private-lodging-ai-prod-data/sample.txt",
+                "checksum": "sha256:sample789",
+                "preview_text": "オーナーおすすめ 食事：モンゴルタンメン中本",
+                "full_text": "オーナーおすすめ\n食事：モンゴルタンメン中本 御徒町店（ランチ・ディナーに最適）住所:〒110-0005 東京都台東区上野 ラーメン横丁内、アパートから450m、徒歩7分。初めての方は看板メニューの北極ラーメンがおすすめ。"
+            }
+        )
+
+# Initialize demo data when module is imported
+initialize_demo_data()

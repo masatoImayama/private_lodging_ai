@@ -7,7 +7,7 @@ from app.schemas.dto import ChunkHit, Citation
 def generate_answer(
     query: str,
     hits: List[ChunkHit],
-    model_name: str = "gemini-1.5-pro",
+    model_name: str = "gemini-2.0-flash-exp",
     temperature: float = 0.3,
     max_tokens: int = 800
 ) -> Tuple[str, List[Citation]]:
@@ -85,11 +85,11 @@ def generate_answer(
 def generate_mock_response(query: str, hits: List[ChunkHit]) -> dict:
     """
     Generate mock response for PoC verification.
-    
+
     Args:
         query: User query
         hits: List of relevant chunk hits
-        
+
     Returns:
         Mock response dictionary
     """
@@ -98,12 +98,34 @@ def generate_mock_response(query: str, hits: List[ChunkHit]) -> dict:
             "answer": "申し訳ございませんが、関連する情報が見つかりませんでした。",
             "cited_chunks": []
         }
-    
+
     # Use first hit for citation
     first_hit = hits[0]
-    
+    full_text = first_hit.full_text if first_hit.full_text else first_hit.preview_text
+
+    # Extract the most relevant part of the text (100-200 characters)
+    # Find the most relevant sentence or phrase
+    sentences = full_text.replace('。', '。\n').replace('、', '、\n').split('\n')
+    relevant_content = ""
+
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if sentence and any(keyword in sentence for keyword in query.split()):
+            relevant_content = sentence
+            break
+
+    # If no keyword match, use the beginning of the text
+    if not relevant_content:
+        relevant_content = full_text[:150]
+
+    # Trim to 100-200 characters
+    if len(relevant_content) > 200:
+        relevant_content = relevant_content[:197] + "..."
+
+    answer_text = f"{relevant_content}"
+
     return {
-        "answer": f"お問い合わせの「{query}」に関して、文書に基づいてお答えいたします。{first_hit.preview_text[:100]}...",
+        "answer": answer_text,
         "cited_chunks": [
             {
                 "doc_id": first_hit.doc_id,
