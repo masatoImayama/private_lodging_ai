@@ -30,13 +30,13 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize configuration and services on startup."""
-    try:
-        Config.initialize_aiplatform()
-    except Exception as e:
-        raise RuntimeError(f"Failed to initialize services: {str(e)}")
+# @app.on_event("startup")
+# async def startup_event():
+#     """Initialize configuration and services on startup."""
+#     try:
+#         Config.initialize_aiplatform()
+#     except Exception as e:
+#         raise RuntimeError(f"Failed to initialize services: {str(e)}")
 
 
 @app.get("/healthz", status_code=200)
@@ -67,7 +67,7 @@ async def ingest_document(request: IngestRequest):
             tenant_id=request.tenant_id,
             gcs_uri=request.gcs_uri,
             doc_id=request.doc_id,
-            index_endpoint_id=Config.INDEX_ENDPOINT_ID
+            index_id=Config.INDEX_ID
         )
         
         if result["chunks"] == 0:

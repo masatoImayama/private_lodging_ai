@@ -7,7 +7,7 @@ from app.schemas.dto import ChunkHit, Citation
 def generate_answer(
     query: str,
     hits: List[ChunkHit],
-    model_name: str = "gemini-2.0-flash-exp",
+    model_name: str = "gemini-1.5-flash-001",
     temperature: float = 0.3,
     max_tokens: int = 800
 ) -> Tuple[str, List[Citation]]:
@@ -56,19 +56,55 @@ def generate_answer(
 
 上記の参考資料に基づいて回答してください。必ず引用したソースを明記してください。"""
     
-    # For PoC verification, use mock response
-    # TODO: Replace with actual Vertex AI Gemini API call
-    result = generate_mock_response(query, hits)
-    
+    # Use actual Vertex AI Gemini API
+    import vertexai
+    from vertexai.preview.generative_models import GenerativeModel
+    from app.config import Config
+
+    vertexai.init(project=Config.PROJECT_ID, location=Config.LOCATION)
+
+    model = GenerativeModel(model_name)
+
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+    try:
+        response = model.generate_content(
+            full_prompt,
+            generation_config={
+                "temperature": temperature,
+                "max_output_tokens": max_tokens,
+            }
+        )
+
+        # Parse JSON response
+        response_text = response.text.strip()
+
+        # Extract JSON from response if wrapped in markdown
+        if "```json" in response_text:
+            start = response_text.find("```json") + 7
+            end = response_text.find("```", start)
+            response_text = response_text[start:end].strip()
+        elif "```" in response_text:
+            start = response_text.find("```") + 3
+            end = response_text.rfind("```")
+            response_text = response_text[start:end].strip()
+
+        result = json.loads(response_text)
+
+    except (json.JSONDecodeError, AttributeError) as e:
+        raise ValueError(f"Failed to parse JSON response from Gemini: {e}")
+    except Exception as e:
+        raise ValueError(f"Error calling Gemini API: {e}")
+
     answer = result.get("answer", "")
     cited_chunks = result.get("cited_chunks", [])
-    
+
     if not answer:
         raise ValueError("No answer generated")
-    
+
     if not cited_chunks:
         raise ValueError("No citations provided in the generated answer")
-    
+
     citations = []
     for cited_chunk in cited_chunks:
         citations.append(Citation(
@@ -78,64 +114,9 @@ def generate_answer(
             chunk_id=cited_chunk["chunk_id"],
             checksum=cited_chunk["checksum"]
         ))
-    
+
     return answer, citations
 
-
-def generate_mock_response(query: str, hits: List[ChunkHit]) -> dict:
-    """
-    Generate mock response for PoC verification.
-
-    Args:
-        query: User query
-        hits: List of relevant chunk hits
-
-    Returns:
-        Mock response dictionary
-    """
-    if not hits:
-        return {
-            "answer": "申し訳ございませんが、関連する情報が見つかりませんでした。",
-            "cited_chunks": []
-        }
-
-    # Use first hit for citation
-    first_hit = hits[0]
-    full_text = first_hit.full_text if first_hit.full_text else first_hit.preview_text
-
-    # Extract the most relevant part of the text (100-200 characters)
-    # Find the most relevant sentence or phrase
-    sentences = full_text.replace('。', '。\n').replace('、', '、\n').split('\n')
-    relevant_content = ""
-
-    for sentence in sentences:
-        sentence = sentence.strip()
-        if sentence and any(keyword in sentence for keyword in query.split()):
-            relevant_content = sentence
-            break
-
-    # If no keyword match, use the beginning of the text
-    if not relevant_content:
-        relevant_content = full_text[:150]
-
-    # Trim to 100-200 characters
-    if len(relevant_content) > 200:
-        relevant_content = relevant_content[:197] + "..."
-
-    answer_text = f"{relevant_content}"
-
-    return {
-        "answer": answer_text,
-        "cited_chunks": [
-            {
-                "doc_id": first_hit.doc_id,
-                "page": first_hit.page,
-                "path": first_hit.path,
-                "chunk_id": first_hit.chunk_id,
-                "checksum": first_hit.checksum
-            }
-        ]
-    }
 
 
 def format_context_for_prompt(hits: List[ChunkHit]) -> str:

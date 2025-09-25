@@ -4,7 +4,7 @@ from google.cloud import aiplatform
 from app.schemas.dto import ChunkHit
 
 
-def embed_query(query: str, model_name: str = "text-embedding-004") -> List[float]:
+def embed_query(query: str, model_name: str = "text-embedding-005") -> List[float]:
     """
     Generate embedding for a query using Vertex AI.
 
@@ -15,18 +15,22 @@ def embed_query(query: str, model_name: str = "text-embedding-004") -> List[floa
     Returns:
         Embedding vector
     """
-    import os
+    from vertexai.preview.language_models import TextEmbeddingInput, TextEmbeddingModel
+    import vertexai
+    from app.config import Config
 
-    # Simple mock embedding for testing
-    if os.getenv("MOCK_MODE", "true").lower() == "true":
-        # Create a simple query-based embedding
-        # Use character codes to create variations
-        base_value = sum(ord(c) for c in query.lower()[:10]) / 1000.0
-        return [base_value + (i * 0.001) for i in range(768)]
+    vertexai.init(project=Config.PROJECT_ID, location=Config.LOCATION)
 
-    from app.rag.indexer import embed_texts
-    embeddings = embed_texts([query])
-    return embeddings[0]
+    model = TextEmbeddingModel.from_pretrained(model_name)
+
+    text_input = TextEmbeddingInput(
+        text=query,
+        task_type="RETRIEVAL_QUERY"  # Specify task type for search queries
+    )
+
+    embeddings = model.get_embeddings([text_input])
+
+    return embeddings[0].values
 
 
 def vector_search(
@@ -36,41 +40,127 @@ def vector_search(
     top_k: int = 30
 ) -> List[Tuple[str, float, dict]]:
     """
-    Perform vector search with namespace filtering.
-    
+    Perform vector search with namespace filtering using Vertex AI Vector Search.
+
     Args:
         tenant_id: Tenant identifier for namespace filtering
         query_embedding: Query embedding vector
         index_endpoint_id: Vector Search index endpoint ID
         top_k: Number of results to retrieve
-        
+
     Returns:
         List of tuples (datapoint_id, distance, metadata)
     """
-    from google.cloud import aiplatform_v1
-    
-    index_endpoint = aiplatform.MatchingEngineIndexEndpoint(index_endpoint_id)
-    
-    response = index_endpoint.find_neighbors(
-        deployed_index_id=index_endpoint.deployed_indexes[0].id,
-        queries=[query_embedding],
-        num_neighbors=top_k,
-        filter=aiplatform_v1.IndexDatapoint.Restriction(
-            namespace=tenant_id,
-            allow_list=[tenant_id]
+    from app.config import Config
+    import json
+    from google.cloud import storage
+
+    try:
+        # Use the correct Vector Search API
+        from google.cloud.aiplatform_v1 import MatchServiceClient
+        from google.cloud.aiplatform_v1.types import FindNeighborsRequest, IndexDatapoint
+
+        client = MatchServiceClient()
+
+        # Create query with namespace restriction
+        query = FindNeighborsRequest.Query(
+            datapoint=IndexDatapoint(
+                datapoint_id="query",
+                feature_vector=query_embedding,
+                restricts=[
+                    IndexDatapoint.Restriction(
+                        namespace=tenant_id,
+                        allow_list=[tenant_id]
+                    )
+                ]
+            ),
+            neighbor_count=top_k
         )
-    )
-    
-    results = []
-    for neighbor_list in response:
-        for neighbor in neighbor_list.neighbors:
-            results.append((
-                neighbor.datapoint_id,
-                neighbor.distance,
-                neighbor.datapoint.metadata
-            ))
-    
-    return results
+
+        # Create find neighbors request
+        request = FindNeighborsRequest(
+            index_endpoint=f"projects/{Config.PROJECT_ID}/locations/{Config.LOCATION}/indexEndpoints/{Config.INDEX_ENDPOINT_ID}",
+            deployed_index_id=Config.DEPLOYED_INDEX_ID,
+            queries=[query]
+        )
+
+        # Perform the search
+        response = client.find_neighbors(request=request)
+
+        # Process results - extract metadata from datapoint_id
+        results = []
+        if response and response.nearest_neighbors:
+            for neighbor_result in response.nearest_neighbors:
+                for neighbor in neighbor_result.neighbors:
+                    datapoint_id = neighbor.datapoint.datapoint_id
+                    # Parse datapoint_id to extract metadata
+                    # Format: {tenant_id}_{doc_id}_{chunk_id}
+                    parts = datapoint_id.split('_', 2)
+                    metadata = {
+                        "tenant_id": parts[0] if len(parts) > 0 else "",
+                        "doc_id": parts[1] if len(parts) > 1 else "",
+                        "chunk_id": parts[2] if len(parts) > 2 else "",
+                        "datapoint_id": datapoint_id
+                    }
+
+                    # Get page from numeric restricts if available
+                    if hasattr(neighbor.datapoint, 'numeric_restricts'):
+                        for nr in neighbor.datapoint.numeric_restricts:
+                            if nr.namespace == "page":
+                                metadata["page"] = nr.value_int
+                                break
+
+                    results.append((
+                        datapoint_id,
+                        neighbor.distance,
+                        metadata
+                    ))
+
+        # Load chunk texts from GCS to get full text
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(Config.BUCKET_NAME)
+
+        # Group results by doc_id to minimize GCS reads
+        doc_chunks = {}
+        for datapoint_id, distance, metadata in results:
+            doc_id = metadata.get("doc_id", "")
+            if doc_id not in doc_chunks:
+                doc_chunks[doc_id] = []
+            doc_chunks[doc_id].append((datapoint_id, distance, metadata))
+
+        # Load chunk texts and enhance results
+        enhanced_results = []
+        for doc_id, doc_results in doc_chunks.items():
+            chunk_texts = {}
+            try:
+                # Load chunk texts for this document
+                chunk_blob_name = f"chunks/{tenant_id}/{doc_id}.json"
+                chunk_blob = bucket.blob(chunk_blob_name)
+                if chunk_blob.exists():
+                    chunk_data = json.loads(chunk_blob.download_as_text())
+                    chunk_texts = chunk_data
+            except Exception as e:
+                print(f"Warning: Could not load chunk texts for {doc_id}: {e}")
+
+            # Enhance metadata for each result
+            for datapoint_id, distance, metadata in doc_results:
+                chunk_info = chunk_texts.get(datapoint_id, {})
+                enhanced_metadata = metadata.copy()
+                enhanced_metadata["full_text"] = chunk_info.get("text", "")
+                enhanced_metadata["preview_text"] = chunk_info.get("text", "")[:200]
+                enhanced_metadata["path"] = chunk_info.get("path", "")
+                enhanced_metadata["checksum"] = chunk_info.get("checksum", "")
+                enhanced_metadata["page"] = chunk_info.get("page", metadata.get("page", 1))
+
+                enhanced_results.append((datapoint_id, distance, enhanced_metadata))
+
+        return enhanced_results
+
+    except Exception as e:
+        print(f"Error in vector search: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 
 def apply_mmr(
@@ -166,41 +256,30 @@ async def search(
     Returns:
         List of ChunkHit objects
     """
-    import os
-    
     query_embedding = embed_query(query)
-    
-    # Use mock store for testing if MOCK_MODE is set
-    if os.getenv("MOCK_MODE", "true").lower() == "true":
-        from app.rag.mock_store import mock_store
-        hits = mock_store.search(
-            tenant_id=tenant_id,
-            query_embedding=query_embedding,
-            top_k=top_k_vector
+
+    search_results = vector_search(
+        tenant_id=tenant_id,
+        query_embedding=query_embedding,
+        index_endpoint_id=index_endpoint_id,
+        top_k=top_k_vector
+    )
+
+    hits = []
+    for datapoint_id, distance, metadata in search_results:
+        score = 1.0 / (1.0 + distance)
+
+        hit = ChunkHit(
+            chunk_id=metadata.get("chunk_id", ""),
+            doc_id=metadata.get("doc_id", ""),
+            page=int(metadata.get("page", 1)),
+            path=metadata.get("path", ""),
+            checksum=metadata.get("checksum", ""),
+            preview_text=metadata.get("preview_text", ""),
+            score=score,
+            full_text=metadata.get("full_text", "")
         )
-    else:
-        search_results = vector_search(
-            tenant_id=tenant_id,
-            query_embedding=query_embedding,
-            index_endpoint_id=index_endpoint_id,
-            top_k=top_k_vector
-        )
-        
-        hits = []
-        for datapoint_id, distance, metadata in search_results:
-            score = 1.0 / (1.0 + distance)
-            
-            hit = ChunkHit(
-                chunk_id=metadata.get("chunk_id", ""),
-                doc_id=metadata.get("doc_id", ""),
-                page=int(metadata.get("page", 1)),
-                path=metadata.get("path", ""),
-                checksum=metadata.get("checksum", ""),
-                preview_text=metadata.get("preview_text", ""),
-                score=score,
-                full_text=metadata.get("full_text", "")
-            )
-            hits.append(hit)
+        hits.append(hit)
     
     diversified_hits = apply_mmr(
         hits=hits,

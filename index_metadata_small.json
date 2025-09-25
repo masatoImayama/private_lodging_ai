@@ -1,0 +1,12 @@
+{
+  "contentsDeltaUri": "gs://private-lodging-ai-rag-poc/vector-data",
+  "config": {
+    "dimensions": 768,
+    "distanceMeasureType": "DOT_PRODUCT_DISTANCE",
+    "featureNormType": "NONE",
+    "shardSize": "SHARD_SIZE_SMALL",
+    "algorithmConfig": {
+      "bruteForceConfig": {}
+    }
+  }
+}
