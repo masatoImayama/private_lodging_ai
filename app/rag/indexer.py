@@ -91,46 +91,31 @@ def upsert_vectors(
             content_type="application/json"
         )
 
-        # Prepare data points for upsert using the correct API
-        from google.cloud.aiplatform_v1 import IndexServiceClient
-        from google.cloud.aiplatform_v1.types import IndexDatapoint, UpsertDatapointsRequest
+        # Use the simpler aiplatform library approach
+        from google.cloud import aiplatform
 
-        client = IndexServiceClient()
+        aiplatform.init(project=Config.PROJECT_ID, location=Config.LOCATION)
 
-        # Prepare datapoints
+        # Prepare datapoints for Vector Search
         datapoints = []
         for chunk, embedding in zip(chunks, embeddings):
-            # Create datapoint with namespace restriction
-            datapoint = IndexDatapoint(
-                datapoint_id=f"{tenant_id}_{doc_id}_{chunk.chunk_id}",
-                feature_vector=embedding,
-                restricts=[
-                    IndexDatapoint.Restriction(
-                        namespace=tenant_id,
-                        allow_list=[tenant_id]
-                    )
-                ],
-                numeric_restricts=[
-                    IndexDatapoint.NumericRestriction(
-                        namespace="page",
-                        value_int=chunk.page
-                    )
-                ],
-                crowding_tag=IndexDatapoint.CrowdingTag(
-                    crowding_attribute=doc_id
-                )
-            )
+            # Create a simple datapoint
+            datapoint = {
+                "id": f"{tenant_id}_{doc_id}_{chunk.chunk_id}",
+                "embedding": embedding
+            }
             datapoints.append(datapoint)
 
-        # Create upsert request
-        index_name = f"projects/{Config.PROJECT_ID}/locations/{Config.LOCATION}/indexes/{index_id}"
-        request = UpsertDatapointsRequest(
-            index=index_name,
-            datapoints=datapoints
+        # Use the MatchingEngineIndexEndpoint.upsert_datapoints method
+        index_endpoint = aiplatform.MatchingEngineIndexEndpoint(
+            index_endpoint_name=f"projects/{Config.PROJECT_ID}/locations/{Config.LOCATION}/indexEndpoints/{Config.INDEX_ENDPOINT_ID}"
         )
 
-        # Upsert datapoints
-        response = client.upsert_datapoints(request=request)
+        # Perform the upsert operation
+        response = index_endpoint.upsert_datapoints(
+            deployed_index_id=Config.DEPLOYED_INDEX_ID,
+            datapoints=datapoints
+        )
 
         print(f"Successfully upserted {len(datapoints)} vectors to Vector Search")
         print(f"Chunk texts stored at: gs://{Config.BUCKET_NAME}/{chunk_blob_name}")

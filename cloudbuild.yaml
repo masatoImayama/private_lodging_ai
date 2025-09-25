@@ -35,11 +35,11 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'PROJECT_ID=${PROJECT_ID},LOCATION=us-central1,BUCKET_NAME=private-lodging-ai-rag-poc,INDEX_ID=6261536201254109184,INDEX_ENDPOINT_ID=7867526865248845824'
+      - 'PROJECT_ID=${PROJECT_ID},LOCATION=us-central1,BUCKET_NAME=private-lodging-ai-rag-poc,INDEX_ID=6836589578673979392,INDEX_ENDPOINT_ID=7867526865248845824,DEPLOYED_INDEX_ID=private_lodging_deploy_optimized'
       - '--memory'
       - '1Gi'
       - '--cpu'
-      - '0.5'
+      - '1'
       - '--timeout'
       - '300'
       - '--concurrency'
@@ -55,4 +55,3 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  machineType: 'E2_SMALL'

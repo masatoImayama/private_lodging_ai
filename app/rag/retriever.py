@@ -56,43 +56,29 @@ def vector_search(
     from google.cloud import storage
 
     try:
-        # Use the correct Vector Search API
-        from google.cloud.aiplatform_v1 import MatchServiceClient
-        from google.cloud.aiplatform_v1.types import FindNeighborsRequest, IndexDatapoint
+        # Use the basic aiplatform library for vector search
+        from google.cloud import aiplatform
 
-        client = MatchServiceClient()
+        aiplatform.init(project=Config.PROJECT_ID, location=Config.LOCATION)
 
-        # Create query with namespace restriction
-        query = FindNeighborsRequest.Query(
-            datapoint=IndexDatapoint(
-                datapoint_id="query",
-                feature_vector=query_embedding,
-                restricts=[
-                    IndexDatapoint.Restriction(
-                        namespace=tenant_id,
-                        allow_list=[tenant_id]
-                    )
-                ]
-            ),
-            neighbor_count=top_k
+        # Get the index endpoint
+        index_endpoint = aiplatform.MatchingEngineIndexEndpoint(
+            index_endpoint_name=f"projects/{Config.PROJECT_ID}/locations/{Config.LOCATION}/indexEndpoints/{Config.INDEX_ENDPOINT_ID}"
         )
 
-        # Create find neighbors request
-        request = FindNeighborsRequest(
-            index_endpoint=f"projects/{Config.PROJECT_ID}/locations/{Config.LOCATION}/indexEndpoints/{Config.INDEX_ENDPOINT_ID}",
+        # Perform vector search
+        response = index_endpoint.find_neighbors(
             deployed_index_id=Config.DEPLOYED_INDEX_ID,
-            queries=[query]
+            queries=[query_embedding],
+            num_neighbors=top_k
         )
-
-        # Perform the search
-        response = client.find_neighbors(request=request)
 
         # Process results - extract metadata from datapoint_id
         results = []
         if response and response.nearest_neighbors:
-            for neighbor_result in response.nearest_neighbors:
-                for neighbor in neighbor_result.neighbors:
-                    datapoint_id = neighbor.datapoint.datapoint_id
+            for neighbor_list in response.nearest_neighbors:
+                for neighbor in neighbor_list:
+                    datapoint_id = neighbor.id
                     # Parse datapoint_id to extract metadata
                     # Format: {tenant_id}_{doc_id}_{chunk_id}
                     parts = datapoint_id.split('_', 2)
@@ -102,13 +88,6 @@ def vector_search(
                         "chunk_id": parts[2] if len(parts) > 2 else "",
                         "datapoint_id": datapoint_id
                     }
-
-                    # Get page from numeric restricts if available
-                    if hasattr(neighbor.datapoint, 'numeric_restricts'):
-                        for nr in neighbor.datapoint.numeric_restricts:
-                            if nr.namespace == "page":
-                                metadata["page"] = nr.value_int
-                                break
 
                     results.append((
                         datapoint_id,
