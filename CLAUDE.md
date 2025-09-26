@@ -1,195 +1,183 @@
-# システム構成
+# CLAUDE.md
 
-## エンドポイント
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-### POST `/ingest`
+## System Overview
 
-- **入力例**  
-    ```json
-    {
-        "tenant_id": "t_001",
-        "gcs_uri": "gs://.../file.pdf",
-        "doc_id": "doc-2025-001"
-    }
-    ```
+RAG (Retrieval-Augmented Generation) API using GCP Vertex AI + Vector Search. Provides PDF document ingestion and tenant-isolated chat functionality.
 
-- **処理フロー**  
-    抽出（PDF→テキスト）  
-    → 分割（chunk_size=1400, overlap=160）  
-    → 重複検知（checksum）  
-    → 埋め込み生成（text-embedding-004）  
-    → Vertex Vector Search に upsert（namespace=tenant）
+**Endpoints:**
+- `POST /ingest`: PDF ingestion (extract → chunk → embed → index)
+- `POST /chat`: RAG-based Q&A with mandatory citations
+- `GET /healthz`: Health check
 
-- **出力例**  
-    ```json
-    {
-        "job_id": "<uuid>",
-        "doc_id": "...",
-        "chunks": <n>
-    }
-    ```
-
-- 成否は同期でOK（PoC）。5MB以上や巨大PDFは後で非同期に切替。
-
----
-
-### POST `/chat`
-
-- **入力例**  
-    ```json
-    {
-        "tenant_id": "t_001",
-        "query": "○○の手順は？",
-        "top_k": 15
-    }
-    ```
-
-- **処理フロー**  
-    Vector Search（namespace=tenant, top_k=30）  
-    → MMR/RRFで10〜15に圧縮  
-    → Gemini 1.5 Proで回答生成（temperature=0.3, max_tokens=800）＋引用必須
-
-- **出力例**  
-    ```json
-    {
-        "answer": "…",
-        "citations": [
-            {
-                "doc_id": "doc-2025-001",
-                "page": 3,
-                "path": "gs://.../file.pdf",
-                "chunk_id": "c-00012",
-                "checksum": "sha256:..."
-            }
-        ],
-        "latency_ms": 4200
-    }
-    ```
-
----
-
-## コード構成（PoC最小）
+## Architecture
 
 ```
 /app
-    /api
-        main.py            # FastAPI: /ingest /chat /healthz
-    /rag
-        indexer.py         # extract→split→embed→upsert
-        retriever.py       # vector search (namespace filter)
-        generator.py       # Gemini呼び出し＋構造化出力
-    /schemas
-        dto.py             # Pydanticモデル（リクエスト/レスポンス）
-    /utils
-        pdf.py             # pypdfでテキスト抽出
-        chunks.py          # chunk関数
-        hash.py            # sha256チェックサム
+  /api
+    main.py            # FastAPI app: /ingest /chat /healthz
+  /rag
+    indexer.py         # Document processing: extract→split→embed→upsert
+    retriever.py       # Vector search with namespace filtering + MMR
+    generator.py       # Gemini answer generation with citations
+  /schemas
+    dto.py             # Pydantic models (request/response)
+  /utils
+    pdf.py             # pypdf text extraction
+    chunks.py          # Text chunking (size=1400, overlap=160)
+    hash.py            # sha256 checksum
+  config.py           # Environment config with validation
 ```
 
----
+**Key Components:**
+- **Tenant Isolation**: All vector search operations use `namespace=tenant_id` for data separation
+- **Citations Required**: All answers must include citations (doc_id, page, path, chunk_id, checksum)
+- **Storage Strategy**:
+  - Raw PDFs stored in GCS
+  - Chunk metadata stored in GCS at `chunks/{tenant_id}/{doc_id}.json`
+  - Vectors stored in Vertex AI Vector Search
+- **Embedding Model**: text-embedding-005 (768 dimensions, task_type=RETRIEVAL_DOCUMENT for indexing, RETRIEVAL_QUERY for search)
+- **Generation Model**: gemini-1.5-pro (temperature=0.3, max_tokens=800)
+- **Retrieval Strategy**: Top 30 from vector search → MMR (lambda=0.6) → Top 15 final results
 
-## 依存ライブラリ（例）
+## Environment Configuration
 
-- fastapi, uvicorn, pydantic
-- google-cloud-aiplatform（Gemini/Embeddings/Vector Search）
-- google-cloud-storage
-- pypdf（PoCの抽出用／スキャンPDFは対象外）
-- tenacity（リトライ, 任意）
+Required environment variables:
+```
+PROJECT_ID           # GCP project ID (use PROJECT_ID, not PROJECT_NUMBER for index operations)
+PROJECT_NUMBER       # GCP project number (863645902320)
+LOCATION             # GCP region (us-central1 for production)
+BUCKET_NAME          # GCS bucket name
+INDEX_ID             # Vector Search index ID (6836589578673979392)
+INDEX_ENDPOINT_ID    # Vector Search endpoint ID (7867526865248845824)
+DEPLOYED_INDEX_ID    # Deployed index ID (private_lodging_deploy_v2)
+```
 
----
+**Important**: Index resource names use `projects/{PROJECT_ID}/locations/{LOCATION}/indexes/{INDEX_ID}` format.
 
-# コーディング指示書
+## Common Commands
 
-## ゴール
+### Local Development
 
-GCP（Vertex AI + Vector Search）で、`/ingest` と `/chat` が動作する最小RAG APIをPython（FastAPI）で構築する。UIなし。tenant_idでデータを分離し、引用を必ず返す。
+```bash
+# Setup virtual environment
+python -m venv venv
+./venv/Scripts/activate  # Windows
+source venv/bin/activate  # macOS/Linux
 
-## 制約と前提
+# Install dependencies
+pip install -r requirements.txt
 
-- ランタイム：Python 3.11 / FastAPI（Cloud Run向け）
-- Embedding：text-embedding-004（768次元）
-- 生成：gemini-1.5-pro
-- ベクタ検索：Vertex AI Vector Search（index/endpointは既存）
-- ストレージ：GCS（原本PDF/テキスト）
-- 分割：chunk_size=1400, overlap=160
-- 文字コード：UTF-8
-- PoCのため同期処理でOK（将来非同期に切替可能な関数設計）
+# Run server locally
+uvicorn app.api.main:app --reload --port 8080
 
-## 受入基準（Acceptance Criteria）
+# Access Swagger UI
+http://localhost:8080/docs
+```
 
-- POST `/ingest` にPDFのGCSパスを渡すと、N件以上のチャンクがindexに登録される（1件以上でOK）。
-- POST `/chat` にtenant_idと質問を渡すと、10秒以内に
-    - 回答本文（自然文）
-    - 引用配列（doc_id, page, path, chunk_id, checksum）
-    - レイテンシ
-    を返す。
-- ベクタ登録・検索はnamespace=tenant_idで分離され、他テナントの文書は出ない。
-- 生成プロンプトで引用必須が担保される（引用ゼロのときは再試行 or エラー）。
-- ローカル実行（uvicorn）とCloud Runデプロイの両方で動作。
+### Build & Deploy
 
-## 実装タスク
+```bash
+# Get current commit SHA
+git rev-parse --short HEAD
 
-1. **環境・設定**  
-     `.env`（またはSecret Manager）から以下を読み込む：  
-     - PROJECT_ID, LOCATION, BUCKET_NAME, INDEX_ID, INDEX_ENDPOINT_ID  
-     - `aiplatform.init(project=..., location=...)` 初期化関数
+# Build and deploy with Cloud Build (requires SHORT_SHA substitution)
+gcloud builds submit --config cloudbuild.yaml --substitutions=SHORT_SHA=$(git rev-parse --short HEAD) .
 
-2. **スキーマ（/schemas/dto.py）**  
-     - `IngestRequest { tenant_id: str, gcs_uri: str, doc_id: str }`
-     - `IngestResponse { job_id: str, doc_id: str, chunks: int }`
-     - `ChatRequest { tenant_id: str, query: str, top_k: int=15 }`
-     - `Citation { doc_id: str, page: int, path: str, chunk_id: str, checksum: str }`
-     - `ChatResponse { answer: str, citations: List[Citation], latency_ms: int }`
+# Check deployment status
+gcloud run services describe private-lodging-ai --region us-central1
 
-3. **抽出・分割（/utils/pdf.py, /utils/chunks.py）**  
-     - `extract_text_from_pdf(gcs_uri) -> List[PageText]`  
-         GCSからローカルへ一時ダウンロード → pypdfでページ文字列
-     - `make_chunks(pages: List[str], size=1400, overlap=160) -> List[Chunk]`  
-         chunk_idは連番、page情報を保持
+# View logs
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=private-lodging-ai" --limit 50
+```
 
-4. **埋め込み & upsert（/rag/indexer.py）**  
-     - `embed_texts(texts: List[str]) -> List[List[float]]`（text-embedding-004）
-     - `upsert_vectors(tenant_id, doc_id, chunks, embeddings)`  
-         Vector Searchへnamespace=tenant_idでupsert  
-         payload（最小）：tenant_id, doc_id, chunk_id, page, path, checksum, preview_text(先頭200字)
+### Testing
 
-5. **検索（/rag/retriever.py）**  
-     - `search(tenant_id, query, top_k_vector=30) -> List[ChunkHit]`  
-         Embedding生成 → Vector Searchに対してnamespace指定で検索  
-         MMR（単純でOK）で10〜15件に圧縮
+```bash
+# Health check
+curl http://localhost:8080/healthz
 
-6. **生成（/rag/generator.py）**  
-     - `generate_answer(query, hits) -> (answer: str, citations: List[Citation])`  
-         プロンプト（システム）例：  
-         ```
-         あなたは社内ドキュメントに基づいて回答するアシスタントです。
-         回答は登録文書の根拠に厳密に依拠してください。根拠が不十分な場合は「不明」と述べ、想像で補完しないでください。
-         出力には、回答本文に加えて参照したチャンクの {doc_id, page, path, chunk_id, checksum} を必ず含めます。
-         ```
-         - コンテキスト整形：hit.preview_textではなくフルチャンクテキストをプロンプト投入  
-             （payloadに全文は持たせないので、必要に応じてGCSから当該ページテキストをメモリ展開）
+# Ingest document
+curl -X POST "http://localhost:8080/ingest" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "t_001",
+    "gcs_uri": "gs://bucket-name/file.pdf",
+    "doc_id": "doc-2025-001"
+  }'
 
-7. **API（/api/main.py）**  
-     - POST `/ingest`：上記フローを直列に実行、結果返却
-     - POST `/chat`：search→generate_answer、`time.perf_counter()`でlatency計測
-     - GET `/healthz`：`{"status":"ok"}`
+# Chat query
+curl -X POST "http://localhost:8080/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "t_001",
+    "query": "質問内容",
+    "top_k": 15
+  }'
+```
 
-8. **例外処理・バリデーション**  
-     - GCSパス不正、PDF抽出失敗、embedding/生成API失敗時のHTTP 4xx/5xx
-     - tenant_id空を400で弾く
-     - 引用0件時は409か422（PoCの方針に合わせて）
+### GCP Operations
 
-9. **ローカル動作 & デプロイ**  
-     - ローカル：`uvicorn app.api.main:app --reload --port 8080`
-     - Dockerfile（シンプルに）→ Cloud Build → Cloud Run デプロイ
-     - 環境変数はRunのリビジョンに設定（本番はSecret Manager）
+```bash
+# Check Vector Search index status
+gcloud ai indexes describe {INDEX_ID} --region={LOCATION}
 
-## テスト（最低限）
+# List index endpoints
+gcloud ai index-endpoints list --region={LOCATION}
 
-- ingest→chat通し：サンプルPDF（3〜5ページ）を投入→質問→引用あり回答
-- tenant分離：t_001に入れた文書が、t_002の質問で出ない
-- 性能：/chatが10秒未満で返る（3〜5回平均）
-- エラー：存在しないGCSパスで/ingest→4xx
+# Check deployed indexes
+gcloud ai index-endpoints describe {INDEX_ENDPOINT_ID} --region={LOCATION}
+```
 
-## モック機能の実装について
-- 基本的に指示するまで、今後一切のモック機能の実装を禁じます。モックで動いたように見せても何も意味がないため、常に本体実装を正常化するように努めてください。
+## Implementation Constraints
+
+- **Runtime**: Python 3.11 / FastAPI on Cloud Run
+- **Embedding**: text-embedding-005 (768 dimensions)
+- **Generation**: gemini-1.5-pro
+- **Vector Search**: Vertex AI Vector Search (existing index/endpoint)
+- **Storage**: GCS for PDFs and chunk metadata
+- **Chunking**: chunk_size=1400, overlap=160
+- **Encoding**: UTF-8
+- **Processing**: Synchronous for PoC (design functions for future async conversion)
+
+## Acceptance Criteria
+
+- `POST /ingest` registers N chunks to index (minimum 1)
+- `POST /chat` returns within 10 seconds with:
+  - Natural language answer
+  - Citation array (doc_id, page, path, chunk_id, checksum)
+  - Latency in milliseconds
+- Vector operations use namespace=tenant_id (no cross-tenant data leakage)
+- Answer generation enforces mandatory citations (retry or error on zero citations)
+- Works in both local (uvicorn) and Cloud Run deployment
+
+## Important Coding Rules
+
+**Do NOT implement mock functionality** unless explicitly instructed. Mock implementations provide no value. Always work towards correct real implementation.
+
+## Data Flow
+
+**Ingestion Flow:**
+1. Download PDF from GCS to temp location
+2. Extract text with pypdf (page by page)
+3. Split into chunks (1400 chars, 160 overlap)
+4. Generate embeddings (text-embedding-005, RETRIEVAL_DOCUMENT)
+5. Store chunk metadata in GCS (`chunks/{tenant_id}/{doc_id}.json`)
+6. Upsert vectors to Vector Search with datapoint_id format: `{tenant_id}_{doc_id}_{chunk_id}`
+
+**Chat Flow:**
+1. Generate query embedding (text-embedding-005, RETRIEVAL_QUERY)
+2. Vector search (top 30, namespace=tenant_id)
+3. Load chunk texts from GCS
+4. Apply MMR for diversity (compress to 10-15 results)
+5. Generate answer with Gemini using full chunk texts
+6. Extract and return citations from response
+
+## Error Handling
+
+- Invalid GCS path → 400 Bad Request
+- PDF extraction failure → 500 Internal Server Error
+- Empty tenant_id → 400 Bad Request
+- Zero citations → 409 Conflict or 422 Unprocessable Entity
+- Embedding/generation API failures → 500 Internal Server Error with retry logic (using tenacity)
