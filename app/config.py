@@ -8,6 +8,7 @@ load_dotenv()
 
 class Config:
     PROJECT_ID: Optional[str] = os.getenv("PROJECT_ID")
+    PROJECT_NUMBER: Optional[str] = os.getenv("PROJECT_NUMBER")
     LOCATION: str = os.getenv("LOCATION", "asia-northeast1")
     BUCKET_NAME: Optional[str] = os.getenv("BUCKET_NAME")
     INDEX_ID: Optional[str] = os.getenv("INDEX_ID")
