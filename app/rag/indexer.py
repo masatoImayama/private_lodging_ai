@@ -108,7 +108,7 @@ def upsert_vectors(
         from google.cloud import aiplatform_v1
 
         client = aiplatform_v1.IndexServiceClient()
-        index_name = f"projects/{Config.PROJECT_ID}/locations/{Config.LOCATION}/indexes/{Config.INDEX_ID}"
+        index_name = f"projects/{Config.PROJECT_NUMBER}/locations/{Config.LOCATION}/indexes/{Config.INDEX_ID}"
 
         # Convert datapoints to proper format
         formatted_datapoints = []
