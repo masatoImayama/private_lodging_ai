@@ -107,21 +107,27 @@ def upsert_vectors(
         # Use the low-level aiplatform_v1 API for upsert operation
         from google.cloud import aiplatform_v1
 
-        client = aiplatform_v1.IndexServiceClient()
-        index_name = f"projects/{Config.PROJECT_NUMBER}/locations/{Config.LOCATION}/indexes/{Config.INDEX_ID}"
+        client = aiplatform_v1.IndexEndpointServiceClient()
+        endpoint_name = f"projects/{Config.PROJECT_NUMBER}/locations/{Config.LOCATION}/indexEndpoints/{Config.INDEX_ENDPOINT_ID}"
 
-        # Convert datapoints to proper format
+        # Convert datapoints to proper format with namespace restrictions
         formatted_datapoints = []
         for datapoint in datapoints:
             formatted_datapoint = aiplatform_v1.IndexDatapoint(
                 datapoint_id=datapoint["datapoint_id"],
-                feature_vector=datapoint["feature_vector"]
+                feature_vector=datapoint["feature_vector"],
+                restricts=[
+                    aiplatform_v1.IndexDatapoint.Restriction(
+                        namespace="tenant_id",
+                        allow_list=[tenant_id]
+                    )
+                ]
             )
             formatted_datapoints.append(formatted_datapoint)
 
         # Create the upsert request
         request = aiplatform_v1.UpsertDatapointsRequest(
-            index=index_name,
+            index_endpoint=endpoint_name,
             datapoints=formatted_datapoints
         )
 
