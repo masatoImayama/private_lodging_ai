@@ -68,6 +68,7 @@ def upsert_vectors(
     aiplatform.init(project=Config.PROJECT_ID, location=Config.LOCATION)
 
     try:
+
         # Save chunk texts to GCS (only this is needed, not full metadata)
         storage_client = storage.Client()
         bucket = storage_client.bucket(Config.BUCKET_NAME)
@@ -104,36 +105,72 @@ def upsert_vectors(
             }
             datapoints.append(datapoint)
 
-        # Use the low-level aiplatform_v1 API for upsert operation
-        from google.cloud import aiplatform_v1
+        # Use the high-level aiplatform API for upsert operation
+        from google.cloud import aiplatform
 
-        # IndexServiceClient を使用（upsert操作はIndexに対して行う）
-        client = aiplatform_v1.IndexServiceClient()
+        # Initialize AI Platform
+        aiplatform.init(project=Config.PROJECT_ID, location=Config.LOCATION)
+
+        # Get the MatchingEngineIndex using high-level API
         index_name = f"projects/{Config.PROJECT_NUMBER}/locations/{Config.LOCATION}/indexes/{Config.INDEX_ID}"
 
+        print(f"DEBUG - Using INDEX_ID: {Config.INDEX_ID}")
+        print(f"DEBUG - Using DEPLOYED_INDEX_ID: {Config.DEPLOYED_INDEX_ID}")
+        print(f"DEBUG - Constructed index_name: {index_name}")
+
         # Convert datapoints to proper format with namespace restrictions
-        formatted_datapoints = []
-        for datapoint in datapoints:
-            formatted_datapoint = aiplatform_v1.IndexDatapoint(
-                datapoint_id=datapoint["datapoint_id"],
-                feature_vector=datapoint["feature_vector"],
-                restricts=[
-                    aiplatform_v1.IndexDatapoint.Restriction(
-                        namespace="tenant_id",
-                        allow_list=[tenant_id]
-                    )
+        datapoints_for_upsert = []
+        for chunk, embedding in zip(chunks, embeddings):
+            datapoint = {
+                "datapoint_id": f"{tenant_id}_{doc_id}_{chunk.chunk_id}",
+                "feature_vector": embedding,
+                "restricts": [
+                    {
+                        "namespace": "tenant_id",
+                        "allow_list": [tenant_id]
+                    }
                 ]
+            }
+            datapoints_for_upsert.append(datapoint)
+
+        # Use MatchingEngineIndex for upsert
+        try:
+            index = aiplatform.MatchingEngineIndex(index_name=index_name)
+
+            # Perform the upsert operation using high-level API
+            response = index.upsert_datapoints(
+                datapoints=datapoints_for_upsert
             )
-            formatted_datapoints.append(formatted_datapoint)
+        except Exception as high_level_error:
+            print(f"High-level API failed: {high_level_error}")
+            print("Falling back to low-level API...")
 
-        # Create the upsert request (index フィールドを使用)
-        request = aiplatform_v1.UpsertDatapointsRequest(
-            index=index_name,
-            datapoints=formatted_datapoints
-        )
+            # Fallback to low-level API
+            from google.cloud import aiplatform_v1
 
-        # Perform the upsert operation
-        response = client.upsert_datapoints(request=request)
+            client = aiplatform_v1.IndexServiceClient()
+
+            # Convert to low-level format
+            formatted_datapoints = []
+            for dp in datapoints_for_upsert:
+                formatted_datapoint = aiplatform_v1.IndexDatapoint(
+                    datapoint_id=dp["datapoint_id"],
+                    feature_vector=dp["feature_vector"],
+                    restricts=[
+                        aiplatform_v1.IndexDatapoint.Restriction(
+                            namespace="tenant_id",
+                            allow_list=[tenant_id]
+                        )
+                    ]
+                )
+                formatted_datapoints.append(formatted_datapoint)
+
+            request = aiplatform_v1.UpsertDatapointsRequest(
+                index=index_name,
+                datapoints=formatted_datapoints
+            )
+
+            response = client.upsert_datapoints(request=request)
 
         print(f"Successfully upserted {len(chunks)} vectors to Vector Search")
         print(f"Chunk texts stored at: gs://{Config.BUCKET_NAME}/{chunk_blob_name}")
