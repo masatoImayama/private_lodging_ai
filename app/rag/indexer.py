@@ -107,8 +107,9 @@ def upsert_vectors(
         # Use the low-level aiplatform_v1 API for upsert operation
         from google.cloud import aiplatform_v1
 
-        client = aiplatform_v1.IndexEndpointServiceClient()
-        endpoint_name = f"projects/{Config.PROJECT_NUMBER}/locations/{Config.LOCATION}/indexEndpoints/{Config.INDEX_ENDPOINT_ID}"
+        # IndexServiceClient を使用（upsert操作はIndexに対して行う）
+        client = aiplatform_v1.IndexServiceClient()
+        index_name = f"projects/{Config.PROJECT_NUMBER}/locations/{Config.LOCATION}/indexes/{Config.INDEX_ID}"
 
         # Convert datapoints to proper format with namespace restrictions
         formatted_datapoints = []
@@ -125,9 +126,9 @@ def upsert_vectors(
             )
             formatted_datapoints.append(formatted_datapoint)
 
-        # Create the upsert request
+        # Create the upsert request (index フィールドを使用)
         request = aiplatform_v1.UpsertDatapointsRequest(
-            index_endpoint=endpoint_name,
+            index=index_name,
             datapoints=formatted_datapoints
         )
 
