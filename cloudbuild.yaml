@@ -35,7 +35,7 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'PROJECT_ID=${PROJECT_ID},PROJECT_NUMBER=863645902320,LOCATION=us-central1,BUCKET_NAME=private-lodging-ai-rag-poc,INDEX_ID=6836589578673979392,INDEX_ENDPOINT_ID=7867526865248845824,DEPLOYED_INDEX_ID=private_lodging_deploy_v2'
+      - 'PROJECT_ID=${PROJECT_ID},PROJECT_NUMBER=863645902320,LOCATION=us-central1,BUCKET_NAME=private-lodging-ai-rag-poc,INDEX_ID=6734414162128011264,INDEX_ENDPOINT_ID=7867526865248845824,DEPLOYED_INDEX_ID=private_lodging_stream_v1'
       - '--memory'
       - '1Gi'
       - '--cpu'
