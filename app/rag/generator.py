@@ -7,7 +7,7 @@ from app.schemas.dto import ChunkHit, Citation
 def generate_answer(
     query: str,
     hits: List[ChunkHit],
-    model_name: str = "gemini-1.5-flash-001",
+    model_name: str = "gemini-1.5-pro",
     temperature: float = 0.3,
     max_tokens: int = 800
 ) -> Tuple[str, List[Citation]]:
