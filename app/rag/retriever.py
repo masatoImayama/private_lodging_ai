@@ -75,9 +75,15 @@ def vector_search(
 
         # Process results - extract metadata from datapoint_id
         results = []
-        if response and response.nearest_neighbors:
-            for neighbor_list in response.nearest_neighbors:
-                for neighbor in neighbor_list:
+        if response:
+            # Handle both list and object response formats
+            neighbor_lists = response if isinstance(response, list) else (response.nearest_neighbors if hasattr(response, 'nearest_neighbors') else [])
+
+            for neighbor_list in neighbor_lists:
+                # neighbor_list could be a list of neighbors or a MatchNeighbors object
+                neighbors = neighbor_list if isinstance(neighbor_list, list) else (neighbor_list.neighbors if hasattr(neighbor_list, 'neighbors') else [])
+
+                for neighbor in neighbors:
                     datapoint_id = neighbor.id
                     # Parse datapoint_id to extract metadata
                     # Format: {tenant_id}_{doc_id}_{chunk_id}
