@@ -1,6 +1,7 @@
 import uuid
 from typing import List
 from google.cloud import aiplatform
+from google.cloud import aiplatform_v1
 from app.schemas.dto import Chunk
 from app.utils.pdf import extract_text_from_pdf
 from app.utils.chunks import make_chunks
@@ -105,9 +106,6 @@ def upsert_vectors(
             }
             datapoints.append(datapoint)
 
-        # Use the high-level aiplatform API for upsert operation
-        from google.cloud import aiplatform
-
         # Initialize AI Platform
         aiplatform.init(project=Config.PROJECT_ID, location=Config.LOCATION)
 
@@ -145,10 +143,9 @@ def upsert_vectors(
             print(f"High-level API failed: {high_level_error}")
             print("Falling back to low-level API...")
 
-            # Fallback to low-level API
-            from google.cloud import aiplatform_v1
-
-            client = aiplatform_v1.IndexServiceClient()
+            # リージョンを指定してクライアントを作成
+            client_options = {"api_endpoint": f"{Config.LOCATION}-aiplatform.googleapis.com"}
+            client = aiplatform_v1.IndexServiceClient(client_options=client_options)
 
             # Convert to low-level format
             formatted_datapoints = []
