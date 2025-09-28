@@ -58,7 +58,7 @@ def generate_answer(
     
     # Use actual Vertex AI Gemini API
     import vertexai
-    from vertexai.generative_models import GenerativeModel
+    from vertexai.preview.generative_models import GenerativeModel
     from app.config import Config
 
     vertexai.init(project=Config.PROJECT_ID, location=Config.LOCATION)
