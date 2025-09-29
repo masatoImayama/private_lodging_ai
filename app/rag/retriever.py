@@ -99,19 +99,41 @@ def vector_search(
                 datapoint_id = neighbor.id
                 # Parse datapoint_id to extract metadata
                 # Format: {tenant_id}_{doc_id}_{chunk_id}
-                parts = datapoint_id.split('_', 2)
+                # Example: t_003_doc-2025-003_c-00004
 
-                print(f"DEBUG: Processing {datapoint_id}, parts={parts}, expected tenant={tenant_id}")
+                # Split all underscores to properly handle tenant_id format like t_003
+                parts = datapoint_id.split('_')
+                print(f"DEBUG: Processing {datapoint_id}, all_parts={parts}, expected tenant={tenant_id}")
+
+                # Extract tenant_id correctly (first two parts: t_003)
+                if len(parts) >= 2:
+                    extracted_tenant_id = f"{parts[0]}_{parts[1]}"  # 't_003'
+
+                    # Extract doc_id and chunk_id from remaining parts
+                    if len(parts) >= 4:
+                        # Standard format: t_003_doc-2025-003_c-00004
+                        doc_id = f"{parts[2]}_{parts[3]}" if len(parts) > 3 else parts[2]
+                        chunk_id = '_'.join(parts[4:]) if len(parts) > 4 else ""
+                    else:
+                        # Fallback for shorter formats
+                        doc_id = parts[2] if len(parts) > 2 else ""
+                        chunk_id = '_'.join(parts[3:]) if len(parts) > 3 else ""
+                else:
+                    extracted_tenant_id = ""
+                    doc_id = ""
+                    chunk_id = ""
+
+                print(f"DEBUG: Extracted tenant_id='{extracted_tenant_id}', doc_id='{doc_id}', chunk_id='{chunk_id}'")
 
                 # 🔧 Manual tenant filtering: skip if tenant_id doesn't match
-                if len(parts) > 0 and parts[0] != tenant_id:
-                    print(f"DEBUG: Skipped due to tenant mismatch: {parts[0]} != {tenant_id}")
+                if extracted_tenant_id != tenant_id:
+                    print(f"DEBUG: Skipped due to tenant mismatch: {extracted_tenant_id} != {tenant_id}")
                     continue
 
                 metadata = {
-                    "tenant_id": parts[0] if len(parts) > 0 else "",
-                    "doc_id": parts[1] if len(parts) > 1 else "",
-                    "chunk_id": parts[2] if len(parts) > 2 else "",
+                    "tenant_id": extracted_tenant_id,
+                    "doc_id": doc_id,
+                    "chunk_id": chunk_id,
                     "datapoint_id": datapoint_id
                 }
 
