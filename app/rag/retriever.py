@@ -80,18 +80,22 @@ def vector_search(
         print(f"DEBUG: Response type: {type(response)}")
         print(f"DEBUG: Response length: {len(response) if response else 0}")
 
-        # Process results - find_neighbors returns a list of Neighbor objects directly
+        # Process results - find_neighbors returns a list containing a list of Neighbor objects
         results = []
         if response and len(response) > 0:
-            print(f"DEBUG: Response is a list of {len(response)} neighbors")
-            print(f"DEBUG: First neighbor type: {type(response[0])}")
+            print(f"DEBUG: Response is a list of {len(response)} elements")
+            print(f"DEBUG: First element type: {type(response[0])}")
+
+            # Extract neighbors from response structure
+            neighbors = response[0] if isinstance(response[0], list) else response
+            print(f"DEBUG: Neighbors list length: {len(neighbors)}")
 
             # 最初の5件のIDを詳細表示
-            for i, neighbor in enumerate(response[:5]):
+            for i, neighbor in enumerate(neighbors[:5]):
                 print(f"DEBUG: Neighbor {i}: ID='{neighbor.id}', Distance={neighbor.distance}, Type={type(neighbor.id)}")
 
-            # Process each neighbor directly from response
-            for neighbor in response:
+            # Process each neighbor from neighbors list
+            for neighbor in neighbors:
                 datapoint_id = neighbor.id
                 # Parse datapoint_id to extract metadata
                 # Format: {tenant_id}_{doc_id}_{chunk_id}
