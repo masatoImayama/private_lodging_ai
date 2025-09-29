@@ -80,57 +80,42 @@ def vector_search(
         print(f"DEBUG: Response type: {type(response)}")
         print(f"DEBUG: Response length: {len(response) if response else 0}")
 
-        # Process results - find_neighbors returns a list of MatchNeighbor objects for each query
+        # Process results - find_neighbors returns a list of Neighbor objects directly
         results = []
         if response and len(response) > 0:
-            # response[0] contains neighbors for our first (and only) query
-            query_result = response[0]
+            print(f"DEBUG: Response is a list of {len(response)} neighbors")
+            print(f"DEBUG: First neighbor type: {type(response[0])}")
 
-            print(f"DEBUG: Query result type: {type(query_result)}")
-            print(f"DEBUG: Has 'neighbors' attribute: {hasattr(query_result, 'neighbors')}")
+            # 最初の5件のIDを詳細表示
+            for i, neighbor in enumerate(response[:5]):
+                print(f"DEBUG: Neighbor {i}: ID='{neighbor.id}', Distance={neighbor.distance}, Type={type(neighbor.id)}")
 
-            # query_result.neighbors is a list of Neighbor objects
-            if hasattr(query_result, 'neighbors'):
-                neighbors = query_result.neighbors
-                print(f"DEBUG: Neighbors is None: {neighbors is None}")
-                print(f"DEBUG: Total neighbors BEFORE filtering: {len(neighbors) if neighbors else 0}")
+            # Process each neighbor directly from response
+            for neighbor in response:
+                datapoint_id = neighbor.id
+                # Parse datapoint_id to extract metadata
+                # Format: {tenant_id}_{doc_id}_{chunk_id}
+                parts = datapoint_id.split('_', 2)
 
-                if neighbors:
-                    # 最初の5件のIDを詳細表示
-                    for i, neighbor in enumerate(neighbors[:5]):
-                        print(f"DEBUG: Neighbor {i}: ID='{neighbor.id}', Distance={neighbor.distance}, Type={type(neighbor.id)}")
-                else:
-                    print("DEBUG: No neighbors returned from vector search")
-            else:
-                print(f"DEBUG: Query result does not have 'neighbors' attribute. Available attributes: {dir(query_result)}")
+                print(f"DEBUG: Processing {datapoint_id}, parts={parts}, expected tenant={tenant_id}")
 
-            if hasattr(query_result, 'neighbors') and query_result.neighbors:
+                # 🔧 Manual tenant filtering: skip if tenant_id doesn't match
+                if len(parts) > 0 and parts[0] != tenant_id:
+                    print(f"DEBUG: Skipped due to tenant mismatch: {parts[0]} != {tenant_id}")
+                    continue
 
-                for neighbor in query_result.neighbors:
-                    datapoint_id = neighbor.id
-                    # Parse datapoint_id to extract metadata
-                    # Format: {tenant_id}_{doc_id}_{chunk_id}
-                    parts = datapoint_id.split('_', 2)
+                metadata = {
+                    "tenant_id": parts[0] if len(parts) > 0 else "",
+                    "doc_id": parts[1] if len(parts) > 1 else "",
+                    "chunk_id": parts[2] if len(parts) > 2 else "",
+                    "datapoint_id": datapoint_id
+                }
 
-                    print(f"DEBUG: Processing {datapoint_id}, parts={parts}, expected tenant={tenant_id}")
-
-                    # 🔧 Manual tenant filtering: skip if tenant_id doesn't match
-                    if len(parts) > 0 and parts[0] != tenant_id:
-                        print(f"DEBUG: Skipped due to tenant mismatch: {parts[0]} != {tenant_id}")
-                        continue
-                    
-                    metadata = {
-                        "tenant_id": parts[0] if len(parts) > 0 else "",
-                        "doc_id": parts[1] if len(parts) > 1 else "",
-                        "chunk_id": parts[2] if len(parts) > 2 else "",
-                        "datapoint_id": datapoint_id
-                    }
-
-                    results.append((
-                        datapoint_id,
-                        neighbor.distance,
-                        metadata
-                    ))
+                results.append((
+                    datapoint_id,
+                    neighbor.distance,
+                    metadata
+                ))
         else:
             print(f"DEBUG: Empty or no response from vector search. Response: {response}")
 
