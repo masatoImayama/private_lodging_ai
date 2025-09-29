@@ -45,6 +45,18 @@ async def health_check():
     return {"status": "ok"}
 
 
+@app.get("/health", status_code=200)
+async def health():
+    """Alternative health check endpoint."""
+    return {"status": "ok", "service": "private-lodging-ai"}
+
+
+@app.get("/", status_code=200)
+async def root():
+    """Root endpoint."""
+    return {"message": "Private Lodging RAG API", "version": "1.0.0"}
+
+
 @app.post("/ingest", response_model=IngestResponse)
 async def ingest_document(request: IngestRequest):
     """
