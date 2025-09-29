@@ -83,14 +83,21 @@ def vector_search(
 
             # query_result.neighbors is a list of Neighbor objects
             if hasattr(query_result, 'neighbors') and query_result.neighbors:
+                print(f"DEBUG: Total neighbors before filtering: {len(query_result.neighbors)}")
+                for i, neighbor in enumerate(query_result.neighbors[:5]):  # 最初の5件
+                    print(f"DEBUG: Neighbor {i}: ID={neighbor.id}, Distance={neighbor.distance}")
+
                 for neighbor in query_result.neighbors:
                     datapoint_id = neighbor.id
                     # Parse datapoint_id to extract metadata
                     # Format: {tenant_id}_{doc_id}_{chunk_id}
                     parts = datapoint_id.split('_', 2)
-                    
+
+                    print(f"DEBUG: Processing {datapoint_id}, parts={parts}, expected tenant={tenant_id}")
+
                     # 🔧 Manual tenant filtering: skip if tenant_id doesn't match
                     if len(parts) > 0 and parts[0] != tenant_id:
+                        print(f"DEBUG: Skipped due to tenant mismatch: {parts[0]} != {tenant_id}")
                         continue
                     
                     metadata = {
