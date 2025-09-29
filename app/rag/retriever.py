@@ -61,12 +61,14 @@ def vector_search(
 
         aiplatform.init(project=Config.PROJECT_ID, location=Config.LOCATION)
 
-        # Get the index endpoint
+        # 🔧 修正: PROJECT_NUMBER を使用してエンドポイントを指定
         index_endpoint = aiplatform.MatchingEngineIndexEndpoint(
-            index_endpoint_name=f"projects/{Config.PROJECT_ID}/locations/{Config.LOCATION}/indexEndpoints/{Config.INDEX_ENDPOINT_ID}"
+            index_endpoint_name=f"projects/{Config.PROJECT_NUMBER}/locations/{Config.LOCATION}/indexEndpoints/{Config.INDEX_ENDPOINT_ID}"
         )
 
         # Perform vector search
+        # Note: High-level API doesn't support namespace filtering directly
+        # We'll filter results manually based on datapoint_id prefix
         response = index_endpoint.find_neighbors(
             deployed_index_id=Config.DEPLOYED_INDEX_ID,
             queries=[query_embedding],
@@ -86,6 +88,11 @@ def vector_search(
                     # Parse datapoint_id to extract metadata
                     # Format: {tenant_id}_{doc_id}_{chunk_id}
                     parts = datapoint_id.split('_', 2)
+                    
+                    # 🔧 Manual tenant filtering: skip if tenant_id doesn't match
+                    if len(parts) > 0 and parts[0] != tenant_id:
+                        continue
+                    
                     metadata = {
                         "tenant_id": parts[0] if len(parts) > 0 else "",
                         "doc_id": parts[1] if len(parts) > 1 else "",
@@ -98,6 +105,8 @@ def vector_search(
                         neighbor.distance,
                         metadata
                     ))
+
+        print(f"Vector search returned {len(results)} results for tenant {tenant_id}")
 
         # Load chunk texts from GCS to get full text
         storage_client = storage.Client()
@@ -122,6 +131,9 @@ def vector_search(
                 if chunk_blob.exists():
                     chunk_data = json.loads(chunk_blob.download_as_text())
                     chunk_texts = chunk_data
+                    print(f"Loaded {len(chunk_texts)} chunks for doc {doc_id}")
+                else:
+                    print(f"Warning: Chunk file not found: {chunk_blob_name}")
             except Exception as e:
                 print(f"Warning: Could not load chunk texts for {doc_id}: {e}")
 
@@ -137,6 +149,7 @@ def vector_search(
 
                 enhanced_results.append((datapoint_id, distance, enhanced_metadata))
 
+        print(f"Enhanced results: {len(enhanced_results)} chunks with text loaded")
         return enhanced_results
 
     except Exception as e:
@@ -264,6 +277,8 @@ async def search(
         )
         hits.append(hit)
     
+    print(f"Created {len(hits)} ChunkHit objects")
+    
     diversified_hits = apply_mmr(
         hits=hits,
         query_embedding=query_embedding,
@@ -271,4 +286,5 @@ async def search(
         top_k=top_k_final
     )
     
+    print(f"After MMR: {len(diversified_hits)} diversified hits")
     return diversified_hits

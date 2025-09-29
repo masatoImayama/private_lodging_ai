@@ -49,9 +49,9 @@ PROJECT_ID           # GCP project ID (use PROJECT_ID, not PROJECT_NUMBER for in
 PROJECT_NUMBER       # GCP project number (863645902320)
 LOCATION             # GCP region (us-central1 for production)
 BUCKET_NAME          # GCS bucket name
-INDEX_ID             # Vector Search index ID (6836589578673979392)
+INDEX_ID             # Vector Search index ID (6734414162128011264)
 INDEX_ENDPOINT_ID    # Vector Search endpoint ID (7867526865248845824)
-DEPLOYED_INDEX_ID    # Deployed index ID (private_lodging_deploy_v2)
+DEPLOYED_INDEX_ID    # Deployed index ID (private_lodging_stream_v1)
 ```
 
 **Important**: Index resource names use `projects/{PROJECT_ID}/locations/{LOCATION}/indexes/{INDEX_ID}` format.
