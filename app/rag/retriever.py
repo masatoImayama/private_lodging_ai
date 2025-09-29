@@ -69,11 +69,16 @@ def vector_search(
         # Perform vector search
         # Note: High-level API doesn't support namespace filtering directly
         # We'll filter results manually based on datapoint_id prefix
+        print(f"DEBUG: Query executed for tenant: {tenant_id}")
+
         response = index_endpoint.find_neighbors(
             deployed_index_id=Config.DEPLOYED_INDEX_ID,
             queries=[query_embedding],
             num_neighbors=top_k
         )
+
+        print(f"DEBUG: Response type: {type(response)}")
+        print(f"DEBUG: Response length: {len(response) if response else 0}")
 
         # Process results - find_neighbors returns a list of MatchNeighbor objects for each query
         results = []
@@ -81,11 +86,25 @@ def vector_search(
             # response[0] contains neighbors for our first (and only) query
             query_result = response[0]
 
+            print(f"DEBUG: Query result type: {type(query_result)}")
+            print(f"DEBUG: Has 'neighbors' attribute: {hasattr(query_result, 'neighbors')}")
+
             # query_result.neighbors is a list of Neighbor objects
+            if hasattr(query_result, 'neighbors'):
+                neighbors = query_result.neighbors
+                print(f"DEBUG: Neighbors is None: {neighbors is None}")
+                print(f"DEBUG: Total neighbors BEFORE filtering: {len(neighbors) if neighbors else 0}")
+
+                if neighbors:
+                    # 最初の5件のIDを詳細表示
+                    for i, neighbor in enumerate(neighbors[:5]):
+                        print(f"DEBUG: Neighbor {i}: ID='{neighbor.id}', Distance={neighbor.distance}, Type={type(neighbor.id)}")
+                else:
+                    print("DEBUG: No neighbors returned from vector search")
+            else:
+                print(f"DEBUG: Query result does not have 'neighbors' attribute. Available attributes: {dir(query_result)}")
+
             if hasattr(query_result, 'neighbors') and query_result.neighbors:
-                print(f"DEBUG: Total neighbors before filtering: {len(query_result.neighbors)}")
-                for i, neighbor in enumerate(query_result.neighbors[:5]):  # 最初の5件
-                    print(f"DEBUG: Neighbor {i}: ID={neighbor.id}, Distance={neighbor.distance}")
 
                 for neighbor in query_result.neighbors:
                     datapoint_id = neighbor.id
@@ -112,6 +131,8 @@ def vector_search(
                         neighbor.distance,
                         metadata
                     ))
+        else:
+            print(f"DEBUG: Empty or no response from vector search. Response: {response}")
 
         print(f"Vector search returned {len(results)} results for tenant {tenant_id}")
 
