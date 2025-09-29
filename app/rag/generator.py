@@ -7,7 +7,7 @@ from app.schemas.dto import ChunkHit, Citation
 def generate_answer(
     query: str,
     hits: List[ChunkHit],
-    model_name: str = "gemini-1.5-pro",
+    model_name: str = "gemini-1.5-flash",
     temperature: float = 0.3,
     max_tokens: int = 800
 ) -> Tuple[str, List[Citation]]:
@@ -58,7 +58,7 @@ def generate_answer(
     
     # Use actual Vertex AI Gemini API
     import vertexai
-    from vertexai.generative_models import GenerativeModel
+    from vertexai.preview.generative_models import GenerativeModel
     from app.config import Config
 
     vertexai.init(project=Config.PROJECT_ID, location=Config.LOCATION)
