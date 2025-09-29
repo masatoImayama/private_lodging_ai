@@ -45,9 +45,9 @@ steps:
       - '--concurrency'
       - '80'
       - '--max-instances'
-      - '1'
+      - '3'
       - '--min-instances'
-      - '0'
+      - '1'
 
 images:
   - 'gcr.io/${PROJECT_ID}/private-lodging-ai:${SHORT_SHA}'
