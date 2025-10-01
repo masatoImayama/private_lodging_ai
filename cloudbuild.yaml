@@ -47,7 +47,7 @@ steps:
       - '--max-instances'
       - '3'
       - '--min-instances'
-      - '1'
+      - '0'
 
 images:
   - 'gcr.io/${PROJECT_ID}/private-lodging-ai:${SHORT_SHA}'

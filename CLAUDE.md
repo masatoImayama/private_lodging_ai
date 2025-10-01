@@ -38,7 +38,8 @@ RAG (Retrieval-Augmented Generation) API using GCP Vertex AI + Vector Search. Pr
   - Chunk metadata stored in GCS at `chunks/{tenant_id}/{doc_id}.json`
   - Vectors stored in Vertex AI Vector Search
 - **Embedding Model**: text-embedding-005 (768 dimensions, task_type=RETRIEVAL_DOCUMENT for indexing, RETRIEVAL_QUERY for search)
-- **Generation Model**: gemini-1.5-pro (temperature=0.3, max_tokens=800)
+- **Generation Model**: gemini-2.5-flash (temperature=0.0, max_tokens=1500)
+  - **IMPORTANT**: Gemini 1.5 series was retired April 2025. Use gemini-2.5-flash or gemini-2.5-pro only
 - **Retrieval Strategy**: Top 30 from vector search → MMR (lambda=0.6) → Top 15 final results
 
 ## Environment Configuration
@@ -134,7 +135,7 @@ gcloud ai index-endpoints describe {INDEX_ENDPOINT_ID} --region={LOCATION}
 
 - **Runtime**: Python 3.11 / FastAPI on Cloud Run
 - **Embedding**: text-embedding-005 (768 dimensions)
-- **Generation**: gemini-1.5-pro
+- **Generation**: gemini-2.5-flash (NOT gemini-1.5-* - those models were retired)
 - **Vector Search**: Vertex AI Vector Search (existing index/endpoint)
 - **Storage**: GCS for PDFs and chunk metadata
 - **Chunking**: chunk_size=1400, overlap=160
@@ -169,15 +170,41 @@ gcloud ai index-endpoints describe {INDEX_ENDPOINT_ID} --region={LOCATION}
 **Chat Flow:**
 1. Generate query embedding (text-embedding-005, RETRIEVAL_QUERY)
 2. Vector search (top 30, namespace=tenant_id)
-3. Load chunk texts from GCS
-4. Apply MMR for diversity (compress to 10-15 results)
-5. Generate answer with Gemini using full chunk texts
-6. Extract and return citations from response
+3. Parse datapoint_id to extract tenant_id, doc_id, chunk_id
+   - Format: `{tenant_id}_{doc_id}_{chunk_id}` (e.g., `t_003_doc-2025-003_c-00004`)
+   - Split on underscore: tenant_id = first 2 parts (`t_003`), doc_id = 3rd part, chunk_id = remaining parts
+   - Filter results by tenant_id match for isolation
+4. Load chunk texts from GCS at `chunks/{tenant_id}/{doc_id}.json`
+5. Apply MMR for diversity (compress to 10-15 results)
+6. Generate answer with Gemini using full chunk texts
+7. Extract and return citations from response (fallback to all hits if model returns empty citations)
 
 ## Error Handling
 
-- Invalid GCS path → 400 Bad Request
+- Invalid GCS path → 404 Bad Request
 - PDF extraction failure → 500 Internal Server Error
 - Empty tenant_id → 400 Bad Request
 - Zero citations → 409 Conflict or 422 Unprocessable Entity
 - Embedding/generation API failures → 500 Internal Server Error with retry logic (using tenacity)
+
+## Critical Troubleshooting
+
+**Gemini Model Not Found (404 Publisher Model not found)**
+- **Cause**: Using retired Gemini 1.5 model names (gemini-1.5-flash, gemini-1.5-pro, gemini-1.0-pro)
+- **Solution**: Update to gemini-2.5-flash or gemini-2.5-pro in generator.py
+- **Import Path**: Use `from vertexai.preview.generative_models import GenerativeModel`
+
+**Vector Search Returns No Results**
+- Check DEPLOYED_INDEX_ID matches actual deployment: `gcloud ai index-endpoints describe {INDEX_ENDPOINT_ID} --region={LOCATION}`
+- Verify INDEX_ID is correct: `gcloud ai indexes describe {INDEX_ID} --region={LOCATION}`
+- Ensure datapoint_id format matches: `{tenant_id}_{doc_id}_{chunk_id}`
+
+**Tenant Isolation Failing**
+- Verify datapoint_id parsing in retriever.py correctly splits tenant_id (first 2 underscore-separated parts)
+- Check GCS chunk metadata path: `chunks/{tenant_id}/{doc_id}.json`
+- Confirm tenant filtering logic excludes non-matching tenant_ids
+
+**Empty/Missing Chunk Text**
+- Verify chunk metadata file exists in GCS: `gsutil ls gs://{BUCKET}/chunks/{tenant_id}/`
+- Check doc_id parsing doesn't incorrectly merge with chunk_id
+- Ensure datapoint_id in chunk metadata JSON matches vector search results
