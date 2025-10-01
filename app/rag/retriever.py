@@ -110,14 +110,13 @@ def vector_search(
                     extracted_tenant_id = f"{parts[0]}_{parts[1]}"  # 't_003'
 
                     # Extract doc_id and chunk_id from remaining parts
-                    if len(parts) >= 4:
-                        # Standard format: t_003_doc-2025-003_c-00004
-                        doc_id = f"{parts[2]}_{parts[3]}" if len(parts) > 3 else parts[2]
-                        chunk_id = '_'.join(parts[4:]) if len(parts) > 4 else ""
+                    # Standard format: t_003_doc-2025-003_c-00004
+                    if len(parts) >= 3:
+                        doc_id = parts[2]  # 'doc-2025-003'
+                        chunk_id = '_'.join(parts[3:]) if len(parts) > 3 else ""  # 'c-00004'
                     else:
-                        # Fallback for shorter formats
-                        doc_id = parts[2] if len(parts) > 2 else ""
-                        chunk_id = '_'.join(parts[3:]) if len(parts) > 3 else ""
+                        doc_id = ""
+                        chunk_id = ""
                 else:
                     extracted_tenant_id = ""
                     doc_id = ""

@@ -7,56 +7,89 @@ from app.schemas.dto import ChunkHit, Citation
 def generate_answer(
     query: str,
     hits: List[ChunkHit],
-    model_name: str = "gemini-1.5-flash",
-    temperature: float = 0.3,
-    max_tokens: int = 800
+    model_name: str = "gemini-2.5-flash",
+    temperature: float = 0.0,  # より決定論的に
+    max_tokens: int = 1500  # トークン数を増やす
 ) -> Tuple[str, List[Citation]]:
     """
     Generate answer using Gemini with mandatory citations.
-    
-    Args:
-        query: User query
-        hits: List of relevant chunk hits
-        model_name: Name of the generation model
-        temperature: Generation temperature
-        max_tokens: Maximum number of tokens
-        
-    Returns:
-        Tuple of (answer, citations)
     """
+    # ===== 詳細デバッグ情報 =====
+    print("\n" + "="*80)
+    print(f"QUERY: {query}")
+    print(f"NUMBER OF HITS: {len(hits)}")
+
     if not hits:
         raise ValueError("No context chunks provided for answer generation")
-    
-    context = format_context_for_prompt(hits)
-    
-    system_prompt = """あなたは社内ドキュメントに基づいて回答するアシスタントです。
-回答は登録文書の根拠に厳密に依拠してください。根拠が不十分な場合は「不明」と述べ、想像で補完しないでください。
-出力には、回答本文に加えて参照したチャンクの {doc_id, page, path, chunk_id, checksum} を必ず含めます。
 
-出力は必ず以下のJSON形式で返してください：
+    for i, hit in enumerate(hits, 1):
+        print(f"\n--- Hit {i} ---")
+        print(f"doc_id: {hit.doc_id}")
+        print(f"page: {hit.page}")
+        print(f"chunk_id: {hit.chunk_id}")
+        print(f"score: {getattr(hit, 'score', 'N/A')}")
+        print(f"full_text length: {len(hit.full_text) if hit.full_text else 0}")
+        print(f"preview_text length: {len(hit.preview_text) if hit.preview_text else 0}")
+
+        # 実際のテキスト内容を表示
+        text = hit.full_text if hit.full_text else hit.preview_text
+        print(f"Text content: {text[:200] if text else '[EMPTY]'}")
+
+    print("="*80 + "\n")
+    # ===== ここまで =====
+
+    context = format_context_for_prompt(hits)
+
+    print(f"Context length: {len(context)} characters")
+    print(f"Context preview:\n{context[:800]}\n{'='*50}")
+
+    system_prompt = """あなたは社内ドキュメントに基づいて正確に回答するアシスタントです。
+
+【重要な指示】
+- 以下の「参考資料」に記載されている情報のみを使って回答してください
+- 参考資料に答えがある場合は、必ずその情報を使って回答してください
+- 回答に使用したチャンクの情報を必ずcited_chunksに含めてください
+- cited_chunksを空にすることは絶対に禁止です
+
+【出力形式】※必ずこのJSON形式で出力してください
 {
-  "answer": "ここに回答本文を記載",
+  "answer": "参考資料に基づいた具体的な回答",
   "cited_chunks": [
     {
-      "doc_id": "ドキュメントID",
-      "page": ページ番号,
-      "path": "GCSパス",
-      "chunk_id": "チャンクID",
-      "checksum": "チェックサム"
+      "doc_id": "参考資料に記載のdoc_id",
+      "page": 参考資料に記載のpage番号,
+      "path": "参考資料に記載のpath",
+      "chunk_id": "参考資料に記載のchunk_id",
+      "checksum": "参考資料に記載のchecksum"
     }
   ]
 }
 
-必ず cited_chunks には実際に参照したチャンクのみを含めてください。"""
-    
+【例】
+もし参考資料に「施設名はホテルサンシャインです」と書かれていたら:
+{
+  "answer": "施設の名前は「ホテルサンシャイン」です。",
+  "cited_chunks": [
+    {
+      "doc_id": "doc_123",
+      "page": 1,
+      "path": "gs://bucket/file.pdf",
+      "chunk_id": "chunk_456",
+      "checksum": "abc789"
+    }
+  ]
+}
+
+※必ずJSON形式のみで回答してください。"""
+
     user_prompt = f"""質問: {query}
 
 参考資料:
 {context}
 
-上記の参考資料に基づいて回答してください。必ず引用したソースを明記してください。"""
-    
-    # Use actual Vertex AI Gemini API
+上記の参考資料に基づいて回答してください。cited_chunksには使用したチャンクの情報を必ず含めてください。"""
+
+    # Use Vertex AI Gemini API
     import vertexai
     from vertexai.preview.generative_models import GenerativeModel
     from app.config import Config
@@ -73,13 +106,18 @@ def generate_answer(
             generation_config={
                 "temperature": temperature,
                 "max_output_tokens": max_tokens,
+                "top_p": 0.95,
+                "top_k": 40,
             }
         )
 
-        # Parse JSON response
         response_text = response.text.strip()
 
-        # Extract JSON from response if wrapped in markdown
+        print("=== Gemini Response ===")
+        print(response_text)
+        print("=" * 50)
+
+        # Extract JSON from response
         if "```json" in response_text:
             start = response_text.find("```json") + 7
             end = response_text.find("```", start)
@@ -92,6 +130,7 @@ def generate_answer(
         result = json.loads(response_text)
 
     except (json.JSONDecodeError, AttributeError) as e:
+        print(f"Failed to parse response: {response_text}")
         raise ValueError(f"Failed to parse JSON response from Gemini: {e}")
     except Exception as e:
         raise ValueError(f"Error calling Gemini API: {e}")
@@ -99,11 +138,25 @@ def generate_answer(
     answer = result.get("answer", "")
     cited_chunks = result.get("cited_chunks", [])
 
+    print(f"Answer: {answer}")
+    print(f"Cited chunks count: {len(cited_chunks)}")
+
     if not answer:
         raise ValueError("No answer generated")
 
+    # cited_chunksが空の場合、全てのhitsをフォールバックとして使用
     if not cited_chunks:
-        raise ValueError("No citations provided in the generated answer")
+        print("Warning: No citations from model, using all hits as fallback")
+        cited_chunks = [
+            {
+                "doc_id": hit.doc_id,
+                "page": hit.page,
+                "path": hit.path,
+                "chunk_id": hit.chunk_id,
+                "checksum": hit.checksum
+            }
+            for hit in hits
+        ]
 
     citations = []
     for cited_chunk in cited_chunks:

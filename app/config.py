@@ -13,7 +13,7 @@ class Config:
     BUCKET_NAME: Optional[str] = os.getenv("BUCKET_NAME")
     INDEX_ID: Optional[str] = os.getenv("INDEX_ID")
     INDEX_ENDPOINT_ID: Optional[str] = os.getenv("INDEX_ENDPOINT_ID")
-    DEPLOYED_INDEX_ID: str = os.getenv("DEPLOYED_INDEX_ID", "private_lodging_deploy_v2")
+    DEPLOYED_INDEX_ID: str = os.getenv("DEPLOYED_INDEX_ID", "private_lodging_stream_v1")
 
     @classmethod
     def validate(cls) -> None:
